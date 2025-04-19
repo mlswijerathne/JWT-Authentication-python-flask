@@ -28,7 +28,8 @@ def register_user():
     new_user.save()
     
     return jsonify({"message": "User created successfully!"}), 201
-        
+
+
 
 
 # Login a user
@@ -43,18 +44,38 @@ def login_user():
 
         access_token = create_access_token(identity=user.username)
         refresh_token = create_refresh_token(identity=user.username)
-        
-        return jsonify(
-            {
-                "message": "Login successful!",
-                "tokens": {
-                    "access": access_token,
-                    "refresh": refresh_token
-                }
-            }
-        ), 200
 
-    return jsonify({"message": "Invalid credentials!"}), 401
+        #Create response object
+        response = jsonify(
+            {
+                "message": "Login successful!"
+            }
+        )
+
+        #set cookies with HTTP-only flag
+        response.set_cookie(
+            'access_token_cookie',
+            value=access_token,
+            httponly=True,
+            secure=True, # For https only
+            samesite='Strict', # help prevent CSRF attacks
+            max_age=60*15 # 15 minutes
+        )
+
+        response.set_cookie(
+            'refresh_token_cookie',
+            value=refresh_token,
+            httponly=True,
+            secure=True, # For https only
+            samesite='Strict', # help prevent CSRF attacks
+            max_age=60*60*24*30 # 30 days
+        )
+
+        return response, 200
+    
+    return jsonify({"message": "Invalid username or password!"}), 401
+        
+        
 
 
 @auth_bp.get('/whoami')
@@ -66,6 +87,8 @@ def whoami():
     }), 200
 
 
+
+
 @auth_bp.get('/refresh')
 @jwt_required(refresh = True)
 def refresh_access():
@@ -73,25 +96,86 @@ def refresh_access():
 
     new_access_token = create_access_token(identity = identity)
 
-    return jsonify({
-        "access_token": new_access_token
-        
-    }), 200
+     # Get JTI of current refresh token to rotate it
+    jwt_data = get_jwt()
+    jti = jwt_data["jti"]
 
+   #block the old refresh token(token rotation to prevent replay attacks)
+    token_b = TokenBlocklist(jti = jti)
+    token_b.save()
+
+    #create new refresh token
+    new_refresh_token = create_refresh_token(identity = identity)
+
+    # Create response 
+    response = jsonify(
+          {
+                "message": "Token refreshed successfully!"
+          }
+     )
+
+   
+    # Set new access token in cookie
+    response.set_cookie(
+        'access_token_cookie',
+        value=new_access_token,
+        httponly=True,
+        secure=True, # For https only
+        samesite='Strict', # help prevent CSRF attacks
+        max_age=60*15 # 15 minutes
+    )
+
+    # Set new refresh token in cookie
+    response.set_cookie(
+        'refresh_token_cookie',
+        value=new_refresh_token,
+        httponly=True,
+        secure=True, # For https only
+        samesite='Strict', # help prevent CSRF attacks
+        max_age=60*60*24*30 # 30 days
+    )
+
+    return response, 200
+
+
+
+# Logout a user
 @auth_bp.get('/logout')
 @jwt_required(verify_type=False)
 def logout_user():
     jwt = get_jwt()
-
     jti = jwt["jti"]
     token_type = jwt["type"]
     
 
+    #add token to blocklist
     token_b = TokenBlocklist(jti = jti)
-
     token_b.save()
 
-    return jsonify({
+    
+    # Create response
+    response = jsonify({
         "message": f"{token_type} token revoked successfully!",
-    }), 200
+    })
+
+    # Clear cookies
+    response.set_cookie(
+        'access_token_cookie',
+        value='',
+        httponly=True,
+        secure=True, # For https only
+        samesite='Strict', # help prevent CSRF attacks
+        expires=0
+    )
+    response.set_cookie(
+        'refresh_token_cookie',
+        value='',
+        httponly=True,
+        secure=True, # For https only
+        samesite='Strict', # help prevent CSRF attacks
+        expires=0
+    )
+
+    return response, 200
+
     

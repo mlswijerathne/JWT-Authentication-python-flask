@@ -6,11 +6,18 @@ from models import TokenBlocklist, User
 
 def create_app():
     
-
-
     app = Flask(__name__)
-
     app.config.from_prefixed_env()
+
+    #set JWT to use cookies
+    app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
+    app.config["JWT_COOKIE_SECURE"] = True  # For HTTPS only
+    app.config["JWT_COOKIE_CSRF_PROTECT"] = True  # Enable CSRF protection
+    app.config["JWT_COOKIE_SAMESITE"] = "Strict"  # Prevents CSRF
+
+    #Configure CSRF token settings
+    app.config["JWT_CSRF_CHECK_FORM"] = True
+    app.config["JWT_CSRF_IN_COOKIES"] = True
 
     #initialize exts
     db.init_app(app)
@@ -32,7 +39,7 @@ def create_app():
     #additional claims
     @jwt.additional_claims_loader
     def make_additional_claims(identity):
-        if identity == "lakshitha":
+        if identity == "sandaruwan":
             return {"is_staff": True}
         return {"is_staff": False}
 
