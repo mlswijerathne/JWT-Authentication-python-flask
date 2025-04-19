@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
-from models import User
+from models import TokenBlocklist, User
 from extensions import db
-from flask_jwt_extended import create_access_token, create_refresh_token
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt, get_jwt_identity, jwt_required, current_user
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -56,4 +56,42 @@ def login_user():
 
     return jsonify({"message": "Invalid credentials!"}), 401
 
+
+@auth_bp.get('/whoami')
+@jwt_required()
+def whoami():
+    return jsonify({
+        "message": "You are logged in!",
+        "user_details": {"username": current_user.username, "email": current_user.email}
+    }), 200
+
+
+@auth_bp.get('/refresh')
+@jwt_required(refresh = True)
+def refresh_access():
+    identity = get_jwt_identity()
+
+    new_access_token = create_access_token(identity = identity)
+
+    return jsonify({
+        "access_token": new_access_token
+        
+    }), 200
+
+@auth_bp.get('/logout')
+@jwt_required(verify_type=False)
+def logout_user():
+    jwt = get_jwt()
+
+    jti = jwt["jti"]
+    token_type = jwt["type"]
+    
+
+    token_b = TokenBlocklist(jti = jti)
+
+    token_b.save()
+
+    return jsonify({
+        "message": f"{token_type} token revoked successfully!",
+    }), 200
     
